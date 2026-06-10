@@ -38,13 +38,13 @@ jobs:
 
       - name: 压缩 .app 为 zip
         run: |
-          zip -r dist/ClipboardSanitizer.app.zip ClipboardSanitizer.app
+          zip -r dist/ClipboardSanitizer_new.app.zip ClipboardSanitizer_new.app
 
       - name: Upload .app zip
         uses: actions/upload-artifact@v4
         with:
           name: ClipboardSanitizer-macOS
-          path: dist/ClipboardSanitizer.app.zip
+          path: dist/ClipboardSanitizer_new.app.zip
 
       - name: Upload raw executable (备用)
         uses: actions/upload-artifact@v4
