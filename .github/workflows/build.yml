@@ -38,9 +38,7 @@ jobs:
 
       - name: 压缩 .app 为 zip
         run: |
-          cd dist
-          zip -r ClipboardSanitizer.app.zip ../ClipboardSanitizer.app
-          cd ..
+          zip -r dist/ClipboardSanitizer.app.zip ClipboardSanitizer.app
 
       - name: Upload .app zip
         uses: actions/upload-artifact@v4

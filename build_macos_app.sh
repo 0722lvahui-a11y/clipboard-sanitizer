@@ -27,6 +27,12 @@ if [ -f "background.png" ]; then
     echo "  ✅ 已包含背景图"
 fi
 
+# 4.5 生成图标 PNG（如果没有的话）
+if [ ! -f "icons/icon128.png" ]; then
+    python3 clipboard-sanitizer-extension/generate_icons.py 2>/dev/null || true
+    cp clipboard-sanitizer-extension/icons/icon128.png icons/ 2>/dev/null || true
+fi
+
 # 5. 生成图标 (利用 iconutil + 脚本生成的 PNG)
 if [ -f "icons/icon128.png" ]; then
     ICONSET="${EXE_NAME}.iconset"
@@ -44,6 +50,8 @@ if [ -f "icons/icon128.png" ]; then
     iconutil -c icns "${ICONSET}" -o "${APP_NAME}/Contents/Resources/icon.icns" 2>/dev/null || true
     rm -rf "${ICONSET}"
     echo "  ✅ 已生成图标"
+else
+    echo "  ⚠️ 无图标源，使用默认图标"
 fi
 
 # 6. 创建 Info.plist
