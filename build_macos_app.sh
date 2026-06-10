@@ -27,31 +27,47 @@ if [ -f "background.png" ]; then
     echo "  ✅ 已包含背景图"
 fi
 
-# 4.5 生成图标 PNG（如果没有的话）
-if [ ! -f "icons/icon128.png" ]; then
-    python3 clipboard-sanitizer-extension/generate_icons.py 2>/dev/null || true
-    cp clipboard-sanitizer-extension/icons/icon128.png icons/ 2>/dev/null || true
-fi
+# 5. 生成爱心图标 — 先用 Python 生成 PNG，再用 iconutil 转 icns
+echo "  生成爱心图标..."
+python3 clipboard-sanitizer-extension/generate_icons.py 2>/dev/null || python3 -c "
+import struct, zlib, os
+os.makedirs('icons', exist_ok=True)
+def heart(x,y,s):
+    cx,cy=x-s/2,y-s*0.42
+    v=((cx/(s*0.51))**2+(-cy/(s*0.52))**2-1)**3-(cx/(s*0.51))**2*(-cy/(s*0.52))**3
+    if v<=0.05:return(76,175,80,255)
+    if abs(v)<0.15:return(76,175,80,180)
+    return(0,0,0,0)
+def png(s,n):
+    raw=b''
+    for y in range(s):
+        raw+=b'\x00'
+        for x in range(s):
+            raw+=struct.pack('BBBB',*heart(x,y,s))
+    def c(t,d):c2=t+d;return struct.pack('>I',len(d))+c2+struct.pack('>I',zlib.crc32(c2)&0xffffffff)
+    with open(n,'wb') as f:
+        f.write(b'\x89PNG\r\n\x1a\n'+c(b'IHDR',struct.pack('>IIBBBBB',s,s,8,6,0,0,0))+c(b'IDAT',zlib.compress(raw))+c(b'IEND',b''))
+for s,n in[(16,'icons/icon16.png'),(48,'icons/icon48.png'),(128,'icons/icon128.png')]:png(s,n)
+print('  icons generated')
+"
 
-# 5. 生成图标 (利用 iconutil + 脚本生成的 PNG)
 if [ -f "icons/icon128.png" ]; then
     ICONSET="${EXE_NAME}.iconset"
     rm -rf "${ICONSET}"
     mkdir -p "${ICONSET}"
-    # 从 128x128 PNG 生成各种尺寸
-    sips -z 16 16   icons/icon128.png --out "${ICONSET}/icon_16x16.png"      2>/dev/null
-    sips -z 32 32   icons/icon128.png --out "${ICONSET}/icon_16x16@2x.png"   2>/dev/null
-    sips -z 32 32   icons/icon128.png --out "${ICONSET}/icon_32x32.png"      2>/dev/null
-    sips -z 64 64   icons/icon128.png --out "${ICONSET}/icon_32x32@2x.png"   2>/dev/null
-    sips -z 128 128 icons/icon128.png --out "${ICONSET}/icon_128x128.png"    2>/dev/null
-    sips -z 256 256 icons/icon128.png --out "${ICONSET}/icon_256x256.png"    2>/dev/null
-    sips -z 256 256 icons/icon128.png --out "${ICONSET}/icon_128x128@2x.png" 2>/dev/null
-    sips -z 512 512 icons/icon128.png --out "${ICONSET}/icon_512x512.png"    2>/dev/null
+    sips -z 16 16   icons/icon128.png --out "${ICONSET}/icon_16x16.png"      2>/dev/null || true
+    sips -z 32 32   icons/icon128.png --out "${ICONSET}/icon_16x16@2x.png"   2>/dev/null || true
+    sips -z 32 32   icons/icon128.png --out "${ICONSET}/icon_32x32.png"      2>/dev/null || true
+    sips -z 64 64   icons/icon128.png --out "${ICONSET}/icon_32x32@2x.png"   2>/dev/null || true
+    sips -z 128 128 icons/icon128.png --out "${ICONSET}/icon_128x128.png"    2>/dev/null || true
+    sips -z 256 256 icons/icon128.png --out "${ICONSET}/icon_256x256.png"    2>/dev/null || true
+    sips -z 256 256 icons/icon128.png --out "${ICONSET}/icon_128x128@2x.png" 2>/dev/null || true
+    sips -z 512 512 icons/icon128.png --out "${ICONSET}/icon_512x512.png"    2>/dev/null || true
     iconutil -c icns "${ICONSET}" -o "${APP_NAME}/Contents/Resources/icon.icns" 2>/dev/null || true
     rm -rf "${ICONSET}"
-    echo "  ✅ 已生成图标"
-else
-    echo "  ⚠️ 无图标源，使用默认图标"
+    if [ -f "${APP_NAME}/Contents/Resources/icon.icns" ]; then
+        echo "  ✅ 爱心图标已生成"
+    fi
 fi
 
 # 6. 创建 Info.plist
@@ -67,15 +83,15 @@ cat > "${APP_NAME}/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>com.clipboard.sanitizer</string>
     <key>CFBundleName</key>
-    <string>剪贴板净化器</string>
+    <string>黑毛猪净化器</string>
     <key>CFBundleDisplayName</key>
-    <string>剪贴板净化器</string>
+    <string>黑毛猪净化器</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0</string>
+    <string>2.1</string>
     <key>CFBundleVersion</key>
-    <string>2.0.0</string>
+    <string>2.1.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.13</string>
     <key>NSHighResolutionCapable</key>
@@ -90,6 +106,4 @@ echo ""
 echo "=== ✅ .app 创建完成 ==="
 echo "  ${APP_NAME}"
 echo ""
-echo "使用方式：双击 ${APP_NAME} 即可启动（无需终端）"
-echo "如需自定义背景，将图片命名为 background.png 放入"
-echo "  ${APP_NAME}/Contents/Resources/"
+echo "双击 ${APP_NAME} 即可启动"

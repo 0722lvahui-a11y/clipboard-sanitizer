@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-剪贴板净化器 — 自动去除 act_ 前缀
+黑毛猪净化器 — 自动去除 act_ 前缀
 ===================================
 - 监测剪贴板内容，检测到「act_」字段后自动去除
 - 只保留 act_ 之后的内容
@@ -72,7 +72,7 @@ ACT_MARKER     = "act_"
 # =========================== 主应用 ===========================
 
 class ClipboardSanitizer:
-    """剪贴板净化器 — 自动去除 act_ 前缀"""
+    """黑毛猪净化器 — 自动去除 act_ 前缀"""
 
     def __init__(self):
         # ---- 状态 ----
@@ -84,7 +84,7 @@ class ClipboardSanitizer:
 
         # ---- 窗口 ----
         self.root = tk.Tk()
-        self.root.title("Clip Sanitizer ❤️")
+        self.root.title("黑毛猪净化器")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.resizable(False, False)
 
@@ -155,7 +155,7 @@ class ClipboardSanitizer:
         )
         title_id = self.canvas.create_text(
             WINDOW_WIDTH // 2, 34,
-            text="✨  剪贴板净化器  ✨",
+            text="✨  公主专用  ✨",
             fill=TEXT_DARK,
             font=FONT_TITLE,
         )
