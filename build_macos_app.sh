@@ -83,9 +83,9 @@ cat > "${APP_NAME}/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>com.clipboard.sanitizer</string>
     <key>CFBundleName</key>
-    <string>黑毛猪净化器</string>
+    <string>黑毛猪净化器 NEW</string>
     <key>CFBundleDisplayName</key>
-    <string>黑毛猪净化器</string>
+    <string>黑毛猪净化器 NEW</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

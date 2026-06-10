@@ -84,7 +84,7 @@ class ClipboardSanitizer:
 
         # ---- 窗口 ----
         self.root = tk.Tk()
-        self.root.title("黑毛猪净化器")
+        self.root.title("黑毛猪净化器 NEW")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.resizable(False, False)
 
