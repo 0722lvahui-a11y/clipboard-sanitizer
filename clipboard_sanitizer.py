@@ -26,11 +26,29 @@ IS_WIN = sys.platform == "win32"
 # =========================== 资源路径 ===========================
 
 def resource_path(relative):
-    """获取资源文件路径，兼容 PyInstaller 打包"""
+    """获取资源文件路径，兼容 PyInstaller 打包 + .app Resources"""
+    # 1) PyInstaller 打包数据目录
     if getattr(sys, 'frozen', False):
-        base = sys._MEIPASS
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
+        bundled = os.path.join(sys._MEIPASS, relative)
+        if os.path.exists(bundled):
+            return bundled
+
+        # 2) macOS .app 中的 Resources 目录
+        exe_dir = os.path.dirname(sys.executable)
+        app_resources = os.path.join(exe_dir, '..', 'Resources', relative)
+        app_resources = os.path.normpath(app_resources)
+        if os.path.exists(app_resources):
+            return app_resources
+
+        # 3) 可执行文件同目录
+        fallback = os.path.join(exe_dir, relative)
+        if os.path.exists(fallback):
+            return fallback
+
+        return bundled  # 返回默认路径（不存在也返回，后面 os.path.exists 会处理）
+
+    # 源码运行
+    base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, relative)
 
 # =========================== 配色方案 (少女粉主题) ===========================
