@@ -15,6 +15,7 @@
 import tkinter as tk
 import sys
 import os
+import subprocess
 import platform
 
 # =========================== 平台检测 ===========================
@@ -107,10 +108,7 @@ class ClipboardSanitizer:
         self._build_ui()
 
         # ---- 初始化剪贴板追踪 ----
-        try:
-            self.last_content = self.root.clipboard_get().strip()
-        except Exception:
-            self.last_content = ""
+        self.last_content = self._read_clipboard()
 
         # ---- 启动剪贴板轮询 ----
         self.root.after(POLL_INTERVAL, self._poll)
@@ -257,6 +255,42 @@ class ClipboardSanitizer:
         self.root.after(60, lambda: self.canvas.itemconfig(
             self.heart_id, font=FONT_HEART))
 
+    # ==================== 跨平台剪贴板读写 ====================
+
+    def _read_clipboard(self):
+        """读取剪贴板 — macOS 用 pbpaste，其他用 tkinter"""
+        if IS_MAC:
+            try:
+                r = subprocess.run(
+                    ["pbpaste"], capture_output=True, text=True, timeout=2
+                )
+                return r.stdout.strip() if r.returncode == 0 else ""
+            except Exception:
+                return ""
+        else:
+            try:
+                return self.root.clipboard_get().strip()
+            except (tk.TclError, Exception):
+                return ""
+
+    def _write_clipboard(self, text):
+        """写入剪贴板 — macOS 用 pbcopy，其他用 tkinter"""
+        if IS_MAC:
+            try:
+                subprocess.run(
+                    ["pbcopy"], input=text, text=True, timeout=2
+                )
+                return True
+            except Exception:
+                return False
+        else:
+            try:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text)
+                return True
+            except Exception:
+                return False
+
     # ==================== 剪贴板轮询 ====================
 
     def _poll(self):
@@ -264,18 +298,10 @@ class ClipboardSanitizer:
             return
 
         if self.enabled and not self.is_modifying:
-            try:
-                content = self.root.clipboard_get()
-                if content:
-                    content = content.strip()
-                    if content and content != self.last_content:
-                        self.last_content = content
-                        self._process_content(content)
-            except tk.TclError:
-                pass
-            except Exception as exc:
-                print(f"[ClipSanitizer] 剪贴板读取异常: {exc}")
-                self.is_modifying = False
+            content = self._read_clipboard()
+            if content and content != self.last_content:
+                self.last_content = content
+                self._process_content(content)
 
         self.root.after(POLL_INTERVAL, self._poll)
 
@@ -290,21 +316,18 @@ class ClipboardSanitizer:
             print("[ClipSanitizer] ⚠️  act_ 之后无内容，跳过处理")
             return
 
-        try:
-            self.is_modifying = True
-            self.root.clipboard_clear()
-            self.root.clipboard_append(new_content)
+        self.is_modifying = True
+        ok = self._write_clipboard(new_content)
+        if ok:
             self.last_content = new_content
-            self.is_modifying = False
-
             old_preview = content[:40] + "..." if len(content) > 40 else content
             new_preview = new_content[:40] + "..." if len(new_content) > 40 else new_content
             print(f"[ClipSanitizer] ✅ 已处理 act_")
             print(f"  处理前: {old_preview}")
             print(f"  处理后: {new_preview}")
-        except Exception as exc:
-            print(f"[ClipSanitizer] ❌ 写入剪贴板失败: {exc}")
-            self.is_modifying = False
+        else:
+            print("[ClipSanitizer] ❌ 写入剪贴板失败")
+        self.is_modifying = False
 
     # ==================== 生命周期 ====================
 
