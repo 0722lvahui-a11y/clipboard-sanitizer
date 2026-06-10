@@ -20,12 +20,36 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Build macOS executable
+      - name: Build macOS executable (含背景图)
         run: |
-          pyinstaller --onefile --noconsole --name "ClipboardSanitizer" clipboard_sanitizer.py
+          if [ -f "background.png" ]; then
+            echo "检测到背景图，打包中..."
+            pyinstaller --onefile --windowed \
+              --add-data "background.png:." \
+              --name "ClipboardSanitizer" clipboard_sanitizer.py
+          else
+            echo "无背景图，使用纯色背景"
+            pyinstaller --onefile --windowed \
+              --name "ClipboardSanitizer" clipboard_sanitizer.py
+          fi
 
-      - name: Upload artifact
+      - name: 打包 .app 捆绑包
+        run: bash build_macos_app.sh
+
+      - name: 压缩 .app 为 zip
+        run: |
+          cd dist
+          zip -r ClipboardSanitizer.app.zip ../ClipboardSanitizer.app
+          cd ..
+
+      - name: Upload .app zip
         uses: actions/upload-artifact@v4
         with:
           name: ClipboardSanitizer-macOS
+          path: dist/ClipboardSanitizer.app.zip
+
+      - name: Upload raw executable (备用)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipboardSanitizer-macOS-raw
           path: dist/ClipboardSanitizer
