@@ -2,7 +2,7 @@ name: Build macOS App
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:   # 允许手动触发
 
 jobs:
