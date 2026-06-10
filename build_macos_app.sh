@@ -5,7 +5,7 @@
 set -e
 
 EXE_NAME="ClipboardSanitizer"
-APP_NAME="${EXE_NAME}.app"
+APP_NAME="${EXE_NAME}_new.app"
 DIST_DIR="dist"
 
 echo "=== 创建 .app 捆绑包 ==="
@@ -83,9 +83,9 @@ cat > "${APP_NAME}/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>com.clipboard.sanitizer</string>
     <key>CFBundleName</key>
-    <string>黑毛猪净化器 NEW</string>
+    <string>黑毛猪净化器</string>
     <key>CFBundleDisplayName</key>
-    <string>黑毛猪净化器 NEW</string>
+    <string>黑毛猪净化器</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
