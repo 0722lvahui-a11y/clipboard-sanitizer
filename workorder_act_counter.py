@@ -245,23 +245,23 @@ class MedialhubAutomator:
         self.list_url = f"{self.base_url}/account/workorder"
 
     def start(self):
-        """启动浏览器"""
-        log("启动 Playwright 浏览器...")
+        """启动浏览器 — 优先用系统 Chrome，无需额外下载"""
+        log("启动浏览器...")
         self._playwright = sync_playwright().start()
-
-        # 设置 Playwright browsers 路径
-        browsers_path = self._find_browsers_path()
-        if browsers_path:
-            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
-            log(f"使用浏览器路径: {browsers_path}")
 
         launch_kwargs = {"headless": self.headless}
 
-        # 尝试找到 chromium 可执行文件
-        exe_path = self._find_chromium_exe()
-        if exe_path:
-            launch_kwargs["executable_path"] = exe_path
-            log(f"使用 Chromium: {exe_path}")
+        # 优先级: 系统Chrome > 系统Edge > Playwright Chromium > 错误提示
+        browser_method, browser_name = self._pick_browser()
+
+        if browser_method == "channel":
+            launch_kwargs["channel"] = browser_name
+            log(f"使用系统浏览器: {browser_name}")
+        elif browser_method == "executable":
+            launch_kwargs["executable_path"] = browser_name
+            log(f"使用浏览器: {browser_name}")
+        elif browser_method == "error":
+            raise RuntimeError(browser_name)
 
         self.browser = self._playwright.chromium.launch(**launch_kwargs)
         self.context = self.browser.new_context(
@@ -269,71 +269,57 @@ class MedialhubAutomator:
             locale="zh-CN",
         )
         self.page = self.context.new_page()
-        self.page.set_default_timeout(30000)  # 30秒默认超时
-        log("浏览器启动成功")
+        self.page.set_default_timeout(30000)
+        log(f"浏览器启动成功 ({browser_name})")
 
-    def _find_browsers_path(self):
-        """查找 Playwright 浏览器目录（支持 .app bundle + 系统安装）"""
-        # 1) 环境变量
-        env_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
-        if env_path and os.path.isdir(env_path):
-            return env_path
+    def _pick_browser(self):
+        """选择可用的浏览器，返回 (方式, 名称)"""
+        # 1) 系统 Google Chrome（最优先，你的Mac大概率有）
+        chrome_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+        for p in chrome_paths:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return ("executable", p)
 
-        # 2) .app bundle Resources 目录
-        if getattr(sys, 'frozen', False):
-            exe_dir = os.path.dirname(sys.executable)
-            bundled = os.path.normpath(os.path.join(exe_dir, '..', 'Resources', 'ms-playwright'))
-            if os.path.isdir(bundled):
-                return bundled
+        # 2) 系统 Microsoft Edge
+        edge_paths = [
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+            "/usr/bin/microsoft-edge",
+        ]
+        for p in edge_paths:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return ("executable", p)
 
-        # 3) macOS 默认缓存
-        default_mac = os.path.expanduser("~/Library/Caches/ms-playwright")
-        if os.path.isdir(default_mac):
-            return default_mac
-
-        # 4) Linux 默认缓存
-        default_linux = os.path.expanduser("~/.cache/ms-playwright")
-        if os.path.isdir(default_linux):
-            return default_linux
-
-        # 5) Windows 默认缓存
-        default_win = os.path.expandvars(r"%USERPROFILE%\AppData\Local\ms-playwright")
-        if os.path.isdir(default_win):
-            return default_win
-
-        return None
-
-    def _find_chromium_exe(self):
-        """在 browsers_path 中查找 chromium 可执行文件"""
-        browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
-        search_dirs = [browsers_path] if browsers_path else []
-
-        # 也搜索默认位置
-        for p in [
+        # 3) Playwright 自带的 Chromium（如果之前安装过）
+        for cache_dir in [
             os.path.expanduser("~/Library/Caches/ms-playwright"),
             os.path.expanduser("~/.cache/ms-playwright"),
             os.path.expandvars(r"%USERPROFILE%\AppData\Local\ms-playwright"),
         ]:
-            if os.path.isdir(p) and p not in search_dirs:
-                search_dirs.append(p)
+            if os.path.isdir(cache_dir):
+                for root, dirs, files in os.walk(cache_dir):
+                    if IS_MAC and "Chromium.app" in dirs:
+                        p = os.path.join(root, "Chromium.app", "Contents", "MacOS", "Chromium")
+                        if os.path.isfile(p):
+                            return ("executable", p)
+                    elif IS_WIN and "chrome.exe" in files:
+                        return ("executable", os.path.join(root, "chrome.exe"))
 
-        for base in search_dirs:
-            if not os.path.isdir(base):
-                continue
-            for root, dirs, files in os.walk(base):
-                if IS_MAC:
-                    # chromium-XXXX/chrome-mac/Chromium.app/Contents/MacOS/Chromium
-                    if "Chromium.app" in dirs:
-                        chrom_path = os.path.join(root, "Chromium.app", "Contents", "MacOS", "Chromium")
-                        if os.path.isfile(chrom_path) and os.access(chrom_path, os.X_OK):
-                            return chrom_path
-                elif IS_WIN:
-                    if "chrome.exe" in files:
-                        return os.path.join(root, "chrome.exe")
-                else:
-                    if "chrome" in files:
-                        return os.path.join(root, "chrome")
-        return None
+        # 4) 都没有 → 报错
+        msg = (
+            "未找到可用的浏览器。\n\n"
+            "请安装 Google Chrome 浏览器:\n"
+            "https://www.google.com/chrome/\n\n"
+            "安装后重新打开本程序即可。"
+        )
+        return ("error", msg)
 
     def check_login(self):
         """检查是否已登录，返回 (is_logged_in, 提示信息)"""
