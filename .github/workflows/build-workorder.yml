@@ -1,0 +1,54 @@
+name: Build Workorder Act Counter (macOS App)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'workorder_act_counter.py'
+      - 'build_macos_app_workorder.sh'
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          pip install playwright openpyxl xlrd pyinstaller
+
+      - name: Install Playwright Chromium
+        run: |
+          playwright install chromium --with-deps
+
+      - name: Build macOS executable
+        run: |
+          pyinstaller --onefile --windowed \
+            --name "WorkorderActCounter" \
+            workorder_act_counter.py
+
+      - name: Package .app bundle
+        run: bash build_macos_app_workorder.sh
+
+      - name: Zip .app
+        run: |
+          zip -r dist/WorkorderActCounter.app.zip WorkorderActCounter.app
+
+      - name: Upload .app zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkorderActCounter-macOS
+          path: dist/WorkorderActCounter.app.zip
+
+      - name: Upload raw executable (备用)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkorderActCounter-macOS-raw
+          path: dist/WorkorderActCounter
