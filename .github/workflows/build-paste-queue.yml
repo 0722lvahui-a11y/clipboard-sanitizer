@@ -1,0 +1,39 @@
+name: Build 粘贴队列 (macOS App)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'clipboard_sanitizer.py'
+      - 'build_paste_queue.sh'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyinstaller pynput
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed \
+            --name "PasteQueue" \
+            clipboard_sanitizer.py
+
+      - name: Package .app
+        run: bash build_paste_queue.sh
+
+      - name: Zip .app
+        run: zip -r dist/PasteQueue.app.zip PasteQueue.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 粘贴队列-macOS
+          path: dist/PasteQueue.app.zip

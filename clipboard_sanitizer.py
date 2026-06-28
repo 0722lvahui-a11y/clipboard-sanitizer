@@ -59,7 +59,7 @@ class App:
 
         # ---- 窗口 ----
         self.root = tk.Tk()
-        self.root.title("黑毛猪净化器")
+        self.root.title("粘贴队列")
         self.root.geometry(f"{W}x{H}")
         self.root.resizable(False, False)
         self.root.configure(bg=BG_PINK)
