@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Install dependencies
+        run: pip install pyinstaller pynput
 
       - name: Build macOS executable (含背景图)
         run: |
