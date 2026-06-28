@@ -4,14 +4,47 @@
 ==============================
 - 复制含 act_ 的账号 → 去前缀 → 排队
 - 每次 Ctrl+V 自动贴出下一个
-- 爱心开关控制
+- Win32 原生剪贴板 + 全局键盘钩子
 """
 
 import tkinter as tk
-import sys, os, time, threading, re
+import sys, os, time, threading, re, ctypes
+from ctypes import wintypes
 from collections import deque
 
 IS_WIN = sys.platform == "win32"
+
+# =========================== Win32 剪贴板 ===========================
+CF_UNICODETEXT = 13
+
+def read_clip():
+    try:
+        ctypes.windll.user32.OpenClipboard(0)
+        h = ctypes.windll.user32.GetClipboardData(CF_UNICODETEXT)
+        if h:
+            lp = ctypes.windll.kernel32.GlobalLock(h)
+            if lp:
+                text = ctypes.c_wchar_p(lp).value
+                ctypes.windll.kernel32.GlobalUnlock(lp)
+                ctypes.windll.user32.CloseClipboard()
+                return text or ""
+        ctypes.windll.user32.CloseClipboard()
+    except: pass
+    return ""
+
+def write_clip(text):
+    try:
+        ctypes.windll.user32.OpenClipboard(0)
+        ctypes.windll.user32.EmptyClipboard()
+        size = (len(text) + 1) * 2
+        h = ctypes.windll.kernel32.GlobalAlloc(0x0002, size)
+        lp = ctypes.windll.kernel32.GlobalLock(h)
+        ctypes.cdll.msvcrt.wcscpy(ctypes.c_wchar_p(lp), text)
+        ctypes.windll.kernel32.GlobalUnlock(h)
+        ctypes.windll.user32.SetClipboardData(CF_UNICODETEXT, h)
+        ctypes.windll.user32.CloseClipboard()
+        return True
+    except: return False
 
 # =========================== 配色 ===========================
 BG_PINK        = "#FFD6E0"
@@ -24,39 +57,12 @@ TEXT_DARK      = "#5D4037"
 TEXT_HINT      = "#C4909A"
 DECO_LINE      = "#F0B8C8"
 LABEL_BG       = "#FFE4EC"
-W = 320; H = 310
+W = 320; H = 330
 
 FONT_TITLE  = ("Microsoft YaHei", 13, "bold")
 FONT_STATUS = ("Microsoft YaHei", 10)
 FONT_HINT   = ("Microsoft YaHei", 9)
-FONT_HEART  = ("Segoe UI Emoji", 52)
-
-# =========================== 剪贴板 (Windows tkinter) ===========================
-_root_for_clip = None
-
-def _get_root():
-    global _root_for_clip
-    if _root_for_clip is None:
-        _root_for_clip = tk.Tk()
-        _root_for_clip.withdraw()
-    return _root_for_clip
-
-def read_clip():
-    try:
-        r = _get_root()
-        return r.clipboard_get()
-    except:
-        return ""
-
-def write_clip(text):
-    try:
-        r = _get_root()
-        r.clipboard_clear()
-        r.clipboard_append(text)
-        r.update()
-        return True
-    except:
-        return False
+FONT_HEART  = ("Segoe UI Emoji", 48)
 
 # =========================== 主应用 ===========================
 class App:
@@ -65,33 +71,24 @@ class App:
         self.last_content = ""
         self.is_writing = False
         self.running = True
-
         self.queue = deque()
         self.queue_current = ""
 
-        # 让 tkinter 剪贴板根窗口用我们的主窗口
-        global _root_for_clip
-        _root_for_clip = None
-
-        # ---- 窗口 ----
         self.root = tk.Tk()
         self.root.title("赵赵牌act神器")
         self.root.geometry(f"{W}x{H}")
         self.root.resizable(False, False)
         self.root.configure(bg=BG_PINK)
+        # 置顶
+        self.root.attributes("-topmost", True)
 
-        # 窗口图标
-        try:
-            self.root.iconbitmap(default="")
-        except:
-            pass
+        try: self.root.iconbitmap(default="")
+        except: pass
 
         self._build_ui()
-
         self.last_content = read_clip()
         self.root.after(300, self._poll_clipboard)
         self._start_key_listener()
-
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     # ==================== UI ====================
@@ -100,7 +97,6 @@ class App:
                                 highlightthickness=0, bd=0, bg=BG_PINK)
         self.canvas.pack(fill="both", expand=True)
 
-        # 顶部装饰
         self.canvas.create_rectangle(0, 0, W, 4, fill=DECO_LINE, outline="")
 
         # 标题
@@ -109,7 +105,7 @@ class App:
                                 fill=TEXT_DARK, font=FONT_TITLE)
 
         # 爱心
-        self.heart = self.canvas.create_text(W // 2, 110, text="❤️",
+        self.heart = self.canvas.create_text(W // 2, 105, text="❤️",
                                               fill=HEART_ON, font=FONT_HEART)
         self.canvas.tag_bind(self.heart, "<Button-1>", lambda e: self._toggle())
         self.canvas.tag_bind(self.heart, "<Enter>", self._heart_enter)
@@ -120,7 +116,7 @@ class App:
             lambda e: self.canvas.configure(cursor=""), add="+")
 
         # 状态
-        self.status = self.canvas.create_text(W // 2, 175,
+        self.status = self.canvas.create_text(W // 2, 170,
             text="🟢  开启中 — 自动去除 act_", fill=TEXT_DARK, font=FONT_STATUS)
 
         # 队列
@@ -128,9 +124,13 @@ class App:
                                                     fill=TEXT_HINT, font=FONT_HINT)
 
         # 提示
-        self.canvas.create_text(W // 2, 222,
+        self.canvas.create_text(W // 2, 225,
             text="复制含 act_ 的内容 → Ctrl+V 逐个粘贴",
             fill=TEXT_HINT, font=FONT_HINT)
+
+        # 按键反馈闪点
+        self.ping_dot = self.canvas.create_oval(W//2-4, 248, W//2+4, 256,
+                                                 fill="", outline="")
 
         # 底部
         self.canvas.create_rectangle(0, H - 3, W, H, fill=DECO_LINE, outline="")
@@ -170,39 +170,44 @@ class App:
         else:
             self.canvas.itemconfig(self.queue_label, text="")
 
-    # ==================== 键盘监听 (Ctrl+V) ====================
+    def _show_ping(self):
+        """闪一下绿点表示检测到粘贴"""
+        self.canvas.itemconfig(self.ping_dot, fill="#4CAF50")
+        self.root.after(200, lambda: self.canvas.itemconfig(self.ping_dot, fill=""))
+
+    # ==================== 键盘监听 ====================
     def _start_key_listener(self):
         try:
             from pynput.keyboard import Key, KeyCode, Listener
         except ImportError:
-            self.canvas.itemconfig(self.status, text="⚠️  需安装 pynput: pip install pynput")
+            self.canvas.itemconfig(self.status, text="⚠️  需安装 pynput")
             return
 
         def on_press(key):
-            if not self.enabled:
-                return
-            try:
-                is_ctrl = (key == Key.ctrl or key == Key.ctrl_l or key == Key.ctrl_r)
-            except:
-                is_ctrl = False
-            try:
-                is_v = (key == KeyCode.from_char('v'))
-            except:
-                is_v = False
+            if not self.enabled: return
+            try: is_ctrl = (key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r))
+            except: is_ctrl = False
+            try: is_v = (key == KeyCode.from_char('v') or key == KeyCode.from_char('V'))
+            except: is_v = False
 
             if is_ctrl:
                 self._ctrl_held = True
             if is_v and getattr(self, '_ctrl_held', False):
-                self.root.after(80, self._advance_queue)
+                # 标记粘贴并稍后切换
+                self._paste_fired = True
 
         def on_release(key):
             try:
                 if key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r):
                     self._ctrl_held = False
-            except:
-                pass
+                    if getattr(self, '_paste_fired', False):
+                        self._paste_fired = False
+                        # 在 release 时切换——此时系统粘贴已完成
+                        self.root.after(50, self._advance_queue)
+            except: pass
 
         self._ctrl_held = False
+        self._paste_fired = False
         t = threading.Thread(target=lambda: Listener(
             on_press=on_press, on_release=on_release).run(), daemon=True)
         t.start()
@@ -211,15 +216,16 @@ class App:
     def _advance_queue(self):
         if not self.enabled or not self.queue:
             return
-        old = self.queue.popleft()
+        self.queue.popleft()  # 当前项已粘贴完，出队
         if self.queue:
-            next_item = self.queue[0]
-            self.queue_current = next_item
+            nxt = self.queue[0]
+            self.queue_current = nxt
             self.is_writing = True
-            write_clip(next_item)
+            write_clip(nxt)
             self.is_writing = False
-            self.last_content = next_item
+            self.last_content = nxt
             self._update_queue_label()
+            self._show_ping()
         else:
             self.queue_current = ""
             self._update_queue_label()
@@ -228,12 +234,10 @@ class App:
         cleaned = re.sub(r'act_', '', content)
         lines = re.split(r'[\n\r]+|\s{2,}', cleaned)
         numbers = [l.strip() for l in lines if l.strip()]
-        if not numbers:
-            return False
+        if not numbers: return False
 
         self.queue.clear()
-        for n in numbers:
-            self.queue.append(n)
+        for n in numbers: self.queue.append(n)
 
         first = self.queue[0]
         self.queue_current = first
