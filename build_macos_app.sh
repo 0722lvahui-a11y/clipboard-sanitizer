@@ -5,7 +5,7 @@
 set -e
 
 EXE_NAME="ClipboardSanitizer"
-APP_NAME="${EXE_NAME}_new.app"
+APP_NAME="${EXE_NAME}.app"
 DIST_DIR="dist"
 
 echo "=== 创建 .app 捆绑包 ==="
