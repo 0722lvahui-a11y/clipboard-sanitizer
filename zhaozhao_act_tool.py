@@ -3,13 +3,13 @@
 赵赵牌act神器 — Windows 版
 ==============================
 - 复制含 act_ 的账号 → 去前缀 → 排队
-- 每次 Ctrl+V 自动贴出下一个
-- Win32 原生剪贴板 + 全局键盘钩子
+- 自动每隔 2 秒切换剪贴板到下一个数字
+- 你只管反复 Ctrl+V 就行
+- 无需管理员权限，无需安装任何东西
 """
 
 import tkinter as tk
-import sys, os, time, threading, re, ctypes
-from ctypes import wintypes
+import sys, os, re, ctypes, threading, time
 from collections import deque
 
 IS_WIN = sys.platform == "win32"
@@ -57,12 +57,13 @@ TEXT_DARK      = "#5D4037"
 TEXT_HINT      = "#C4909A"
 DECO_LINE      = "#F0B8C8"
 LABEL_BG       = "#FFE4EC"
-W = 320; H = 330
+W = 320; H = 360
 
 FONT_TITLE  = ("Microsoft YaHei", 13, "bold")
 FONT_STATUS = ("Microsoft YaHei", 10)
 FONT_HINT   = ("Microsoft YaHei", 9)
-FONT_HEART  = ("Segoe UI Emoji", 48)
+FONT_HEART  = ("Segoe UI Emoji", 44)
+FONT_TIMER  = ("Segoe UI Emoji", 14)
 
 # =========================== 主应用 ===========================
 class App:
@@ -73,13 +74,14 @@ class App:
         self.running = True
         self.queue = deque()
         self.queue_current = ""
+        self.timer_count = 0  # 倒计时秒数
+        self.pace = 2         # 切换间隔（秒）
 
         self.root = tk.Tk()
         self.root.title("赵赵牌act神器")
         self.root.geometry(f"{W}x{H}")
         self.root.resizable(False, False)
         self.root.configure(bg=BG_PINK)
-        # 置顶
         self.root.attributes("-topmost", True)
 
         try: self.root.iconbitmap(default="")
@@ -87,8 +89,7 @@ class App:
 
         self._build_ui()
         self.last_content = read_clip()
-        self.root.after(300, self._poll_clipboard)
-        self._start_key_listener()
+        self.root.after(200, self._poll_clipboard)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     # ==================== UI ====================
@@ -101,11 +102,11 @@ class App:
 
         # 标题
         self.canvas.create_rectangle(30, 22, W - 30, 46, fill=LABEL_BG, outline="")
-        self.canvas.create_text(W // 2, 34, text="✨  公主专用  ✨",
+        self.canvas.create_text(W // 2, 34, text="✨  朋友限定  ✨",
                                 fill=TEXT_DARK, font=FONT_TITLE)
 
         # 爱心
-        self.heart = self.canvas.create_text(W // 2, 105, text="❤️",
+        self.heart = self.canvas.create_text(W // 2, 100, text="❤️",
                                               fill=HEART_ON, font=FONT_HEART)
         self.canvas.tag_bind(self.heart, "<Button-1>", lambda e: self._toggle())
         self.canvas.tag_bind(self.heart, "<Enter>", self._heart_enter)
@@ -116,21 +117,46 @@ class App:
             lambda e: self.canvas.configure(cursor=""), add="+")
 
         # 状态
-        self.status = self.canvas.create_text(W // 2, 170,
+        self.status = self.canvas.create_text(W // 2, 158,
             text="🟢  开启中 — 自动去除 act_", fill=TEXT_DARK, font=FONT_STATUS)
 
+        # 倒计时圆环 + 文字
+        self.timer_circle = self.canvas.create_oval(W//2-22, 178, W//2+22, 222,
+                                                     outline=PINK_DARK, width=2)
+        self.timer_text = self.canvas.create_text(W // 2, 200,
+            text="--", fill=PINK_DARK, font=FONT_TIMER)
+
         # 队列
-        self.queue_label = self.canvas.create_text(W // 2, 198, text="",
+        self.queue_label = self.canvas.create_text(W // 2, 238, text="",
                                                     fill=TEXT_HINT, font=FONT_HINT)
 
         # 提示
-        self.canvas.create_text(W // 2, 225,
-            text="复制含 act_ 的内容 → Ctrl+V 逐个粘贴",
+        self.canvas.create_text(W // 2, 265,
+            text="复制含 act_ → 自动排队 → 反复 Ctrl+V",
             fill=TEXT_HINT, font=FONT_HINT)
 
-        # 按键反馈闪点
-        self.ping_dot = self.canvas.create_oval(W//2-4, 248, W//2+4, 256,
-                                                 fill="", outline="")
+        self.hint_text = self.canvas.create_text(W // 2, 282,
+            text=f"每 {self.pace} 秒自动切换下一个",
+            fill=TEXT_HINT, font=("Microsoft YaHei", 8))
+
+        # 加减速度按钮
+        btn_y = 302
+        self.pace_slow = self.canvas.create_text(W//2 - 60, btn_y, text="− 慢",
+            fill=TEXT_HINT, font=("Microsoft YaHei", 10, "bold"))
+        self.pace_val  = self.canvas.create_text(W//2, btn_y, text=f"{self.pace}s",
+            fill=TEXT_DARK, font=("Microsoft YaHei", 10, "bold"))
+        self.pace_fast = self.canvas.create_text(W//2 + 60, btn_y, text="快 ＋",
+            fill=TEXT_HINT, font=("Microsoft YaHei", 10, "bold"))
+        self.canvas.tag_bind(self.pace_slow, "<Button-1>", lambda e: self._change_pace(-1))
+        self.canvas.tag_bind(self.pace_fast, "<Button-1>", lambda e: self._change_pace(+1))
+        self.canvas.tag_bind(self.pace_slow, "<Enter>",
+            lambda e: self.canvas.itemconfig(self.pace_slow, fill=PINK_DARK))
+        self.canvas.tag_bind(self.pace_slow, "<Leave>",
+            lambda e: self.canvas.itemconfig(self.pace_slow, fill=TEXT_HINT))
+        self.canvas.tag_bind(self.pace_fast, "<Enter>",
+            lambda e: self.canvas.itemconfig(self.pace_fast, fill=PINK_DARK))
+        self.canvas.tag_bind(self.pace_fast, "<Leave>",
+            lambda e: self.canvas.itemconfig(self.pace_fast, fill=TEXT_HINT))
 
         # 底部
         self.canvas.create_rectangle(0, H - 3, W, H, fill=DECO_LINE, outline="")
@@ -153,7 +179,8 @@ class App:
             self.canvas.itemconfig(self.heart, fill=HEART_OFF)
             self.canvas.itemconfig(self.status, text="⚪  已暂停")
             self.queue.clear()
-            self._update_queue_label()
+            self._update_queue()
+            self.canvas.itemconfig(self.timer_text, text="--")
         self._click_anim()
 
     def _click_anim(self):
@@ -161,62 +188,65 @@ class App:
         self.canvas.itemconfig(self.heart, font=(FONT_HEART[0], orig + 8))
         self.root.after(60, lambda: self.canvas.itemconfig(self.heart, font=FONT_HEART))
 
-    def _update_queue_label(self):
+    def _update_queue(self):
         n = len(self.queue)
         if n > 0:
             cur = self.queue_current or "?"
             self.canvas.itemconfig(self.queue_label,
-                text=f"排队中: {n} 个  |  当前: {cur}")
+                text=f"排队: {n} 个  |  当前: {cur}")
         else:
             self.canvas.itemconfig(self.queue_label, text="")
 
-    def _show_ping(self):
-        """闪一下绿点表示检测到粘贴"""
-        self.canvas.itemconfig(self.ping_dot, fill="#4CAF50")
-        self.root.after(200, lambda: self.canvas.itemconfig(self.ping_dot, fill=""))
+    def _update_timer(self, sec):
+        self.canvas.itemconfig(self.timer_text, text=str(sec))
+        # 圆环颜色：越接近0越深
+        ratio = sec / max(self.pace, 1)
+        if ratio < 0.3: clr = "#D4919E"
+        elif ratio < 0.6: clr = "#E0A0B0"
+        else: clr = PINK_DARK
+        self.canvas.itemconfig(self.timer_circle, outline=clr)
 
-    # ==================== 键盘监听 ====================
-    def _start_key_listener(self):
-        try:
-            from pynput.keyboard import Key, KeyCode, Listener
-        except ImportError:
-            self.canvas.itemconfig(self.status, text="⚠️  需安装 pynput")
-            return
+    def _change_pace(self, delta):
+        self.pace = max(1, min(5, self.pace + delta))
+        self.canvas.itemconfig(self.pace_val, text=f"{self.pace}s")
+        self.canvas.itemconfig(self.hint_text, text=f"每 {self.pace} 秒自动切换下一个")
 
-        def on_press(key):
-            if not self.enabled: return
-            try: is_ctrl = (key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r))
-            except: is_ctrl = False
-            try: is_v = (key == KeyCode.from_char('v') or key == KeyCode.from_char('V'))
-            except: is_v = False
-
-            if is_ctrl:
-                self._ctrl_held = True
-            if is_v and getattr(self, '_ctrl_held', False):
-                # 标记粘贴并稍后切换
-                self._paste_fired = True
-
-        def on_release(key):
-            try:
-                if key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r):
-                    self._ctrl_held = False
-                    if getattr(self, '_paste_fired', False):
-                        self._paste_fired = False
-                        # 在 release 时切换——此时系统粘贴已完成
-                        self.root.after(50, self._advance_queue)
-            except: pass
-
-        self._ctrl_held = False
-        self._paste_fired = False
-        t = threading.Thread(target=lambda: Listener(
-            on_press=on_press, on_release=on_release).run(), daemon=True)
-        t.start()
-
-    # ==================== 队列 ====================
-    def _advance_queue(self):
+    # ==================== 定时切换 ====================
+    def _start_timer(self):
+        """启动倒计时，到0时切换剪贴板"""
         if not self.enabled or not self.queue:
             return
-        self.queue.popleft()  # 当前项已粘贴完，出队
+        if len(self.queue) <= 1 and self.queue_current == (self.queue[0] if self.queue else ""):
+            # 只剩最后一个了，不需要再切换
+            self.canvas.itemconfig(self.timer_text, text="✓")
+            self.canvas.itemconfig(self.timer_circle, outline=HEART_ON)
+            return
+
+        self.timer_count = self.pace
+        self._update_timer(self.timer_count)
+        self._tick()
+
+    def _tick(self):
+        if not self.enabled or not self.queue or len(self.queue) <= 1:
+            return
+        self.timer_count -= 1
+        if self.timer_count <= 0:
+            # 切换
+            self._advance_queue()
+            if len(self.queue) > 1:
+                self.timer_count = self.pace
+                self._update_timer(self.timer_count)
+                self.root.after(1000, self._tick)
+            else:
+                self.canvas.itemconfig(self.timer_text, text="✓")
+                self.canvas.itemconfig(self.timer_circle, outline=HEART_ON)
+        else:
+            self._update_timer(self.timer_count)
+            self.root.after(1000, self._tick)
+
+    def _advance_queue(self):
+        if not self.queue: return
+        self.queue.popleft()
         if self.queue:
             nxt = self.queue[0]
             self.queue_current = nxt
@@ -224,12 +254,9 @@ class App:
             write_clip(nxt)
             self.is_writing = False
             self.last_content = nxt
-            self._update_queue_label()
-            self._show_ping()
-        else:
-            self.queue_current = ""
-            self._update_queue_label()
+            self._update_queue()
 
+    # ==================== 处理 ====================
     def _process_act_content(self, content):
         cleaned = re.sub(r'act_', '', content)
         lines = re.split(r'[\n\r]+|\s{2,}', cleaned)
@@ -246,7 +273,12 @@ class App:
         self.is_writing = False
         self.last_content = first
 
-        self._update_queue_label()
+        self._update_queue()
+        self.canvas.itemconfig(self.status,
+            text=f"🟢  已加载 {len(self.queue)} 个 | 快按 Ctrl+V")
+
+        # 启动倒计时
+        self._start_timer()
         return True
 
     # ==================== 轮询 ====================
@@ -257,11 +289,8 @@ class App:
             if c and c != self.last_content:
                 self.last_content = c
                 if "act_" in c:
-                    ok = self._process_act_content(c)
-                    if ok:
-                        self.canvas.itemconfig(self.status,
-                            text=f"🟢  已处理 {len(self.queue)} 个账号")
-        self.root.after(300, self._poll_clipboard)
+                    self._process_act_content(c)
+        self.root.after(200, self._poll_clipboard)
 
     def _close(self):
         self.running = False

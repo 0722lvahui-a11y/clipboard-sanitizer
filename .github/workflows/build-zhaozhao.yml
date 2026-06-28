@@ -18,7 +18,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyinstaller pynput
+        run: pip install pyinstaller
 
       - name: Build executable
         run: pyinstaller --onefile --windowed --name "赵赵牌act神器" zhaozhao_act_tool.py
