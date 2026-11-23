@@ -28,7 +28,7 @@ from tkinter import messagebox
 from PIL import Image, ImageDraw, ImageFilter, ImageColor, ImageFont, ImageTk
 
 APP_NAME = "妮牌净化器"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 APP_DATA = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "NiiPurifier")
 SETTINGS_PATH = os.path.join(APP_DATA, "settings.json")
 LOCK_PATH = os.path.join(APP_DATA, "instance.lock")
@@ -320,6 +320,13 @@ class NiiPurifier:
         self._cmd_held = False
         self._v_held = False
         self._listener = None
+        self._mouse_listener = None
+        self._mouse_right_at = None
+        self._mouse_paste_due = None
+        self._own_menu_open = False
+        self._native_dog = None
+        self._dog_ns = {}
+        self._pil_buttons = {}
         self._icon_photo = None
         self._trusted = True
 
@@ -327,10 +334,18 @@ class NiiPurifier:
         self.root.title(APP_NAME)
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        # macOS 的 Tk 透明窗在部分机型不渲染内容；先用实色背景保证可见
         self.transparent = False
-        self.bg = "#FFE4EC"
-        self.root.configure(bg=self.bg)
+        try:
+            self.root.attributes("-transparent", True)
+            self.transparent = True
+        except Exception as e:
+            log("transparent attribute failed: %r" % (e,))
+        self.bg = "systemTransparent" if self.transparent else "#FFE4EC"
+        try:
+            self.root.configure(bg=self.bg)
+        except Exception:
+            self.bg = "#FFE4EC"
+            self.root.configure(bg=self.bg)
         self.root.resizable(False, False)
         self.root.report_callback_exception = self._tk_exception
 
@@ -346,13 +361,17 @@ class NiiPurifier:
         self.canvas.pack(fill="both", expand=True)
 
         self._photos = {}
+        self._pil_buttons = {}
         for on in (False, True):
             for hv in (False, True):
-                self._photos[(on, hv)] = ImageTk.PhotoImage(render_button(on, hv))
+                pil = render_button(on, hv)
+                self._pil_buttons[(on, hv)] = pil
+                self._photos[(on, hv)] = ImageTk.PhotoImage(pil)
         self._btn_xy = (BTN_CX - IMG_R, BTN_CY - IMG_R)
         self.btn_item = self.canvas.create_image(self._btn_xy[0], self._btn_xy[1],
                                                  image=self._photos[(False, False)],
                                                  anchor="nw")
+        self.root.after(500, self._setup_native_dog)
 
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_motion)
@@ -366,14 +385,14 @@ class NiiPurifier:
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
         self._start_listener()
+        self._start_mouse_listener()
         self._trusted = self._check_trusted()
         self.root.after(60, self._poll)
         self.root.after(30, self._anim_tick)
         self.root.after(600, lambda: self._show_toast("左键开关 · 右键菜单",
                                                       duration=4.6, kind="hint"))
         if not self._trusted:
-            self.root.after(5800, lambda: self._show_toast("Cmd+V 需辅助功能权限",
-                                                           duration=6.0, kind="perm"))
+            self.root.after(1200, self._permission_prompt)
         log("start version=%s arch=%s trusted=%s" %
             (APP_VERSION, platform.machine(), self._trusted))
 
@@ -449,12 +468,16 @@ class NiiPurifier:
         m.add_separator()
         m.add_command(label="回到右下角", command=self._reset_pos)
         m.add_command(label="隐藏", command=self._hide_to_dock)
+        m.add_command(label="下一个（手动）", command=self._manual_next)
         m.add_command(label="使用说明", command=self._show_help)
         m.add_separator()
         m.add_command(label="退出", command=self._close)
+        self._own_menu_open = True
+        self._mouse_right_at = None
         try:
             m.tk_popup(event.x_root, event.y_root)
         finally:
+            self._own_menu_open = False
             m.grab_release()
         return "break"
 
@@ -546,9 +569,64 @@ class NiiPurifier:
 
     def _refresh_button(self):
         key = (self.enabled, self.hover)
+        if self._native_dog is not None and key in self._dog_ns:
+            try:
+                self._native_dog.setImage_(self._dog_ns[key])
+                return
+            except Exception as e:
+                log("native dog update failed: %r" % (e,))
         if key in self._photos:
-            self.canvas.itemconfig(self.btn_item, image=self._photos[key])
+            self.canvas.itemconfig(self.btn_item, image=self._photos[key], state="normal")
         self.canvas.tag_raise(self.btn_item)
+
+    def _setup_native_dog(self):
+        """用 AppKit 原生 NSImageView 显示狗头；Tk 透明窗不渲染 RGBA 图。"""
+        try:
+            from AppKit import NSApp, NSImageView, NSImage, NSImageScaling
+            from Foundation import NSData
+            import io
+            wid = int(self.root.winfo_id())
+            nswin = NSApp.windowWithWindowNumber_(wid)
+            if nswin is None:
+                for w in NSApp.windows():
+                    try:
+                        if str(w.title()) == APP_NAME:
+                            nswin = w
+                            break
+                    except Exception:
+                        pass
+            if nswin is None:
+                log("native dog: NSWindow not found")
+                return
+            content = nswin.contentView()
+            x = BTN_CX - IMG_R
+            y = BTN_CY - IMG_R
+            try:
+                flipped = bool(content.isFlipped())
+            except Exception:
+                flipped = True
+            ny = y if flipped else (WIN_H - y - 2 * IMG_R)
+            view = NSImageView.alloc().initWithFrame_(((x, ny), (2 * IMG_R, 2 * IMG_R)))
+            view.setImageScaling_(NSImageScaling.NSImageScaleProportionallyUpOrDown)
+            view.setIgnoresMouseEvents_(True)
+            view.setWantsLayer_(True)
+            self._dog_ns = {}
+            for key, pil in self._pil_buttons.items():
+                buf = io.BytesIO()
+                pil.save(buf, "PNG")
+                data = buf.getvalue()
+                nd = NSData.dataWithBytes_length_(data, len(data))
+                self._dog_ns[key] = NSImage.alloc().initWithData_(nd)
+            view.setImage_(self._dog_ns[(self.enabled, self.hover)])
+            content.addSubview_(view)
+            self._native_dog = view
+            try:
+                self.canvas.itemconfig(self.btn_item, state="hidden")
+            except Exception:
+                pass
+            log("native dog overlay ok flipped=%s" % flipped)
+        except Exception as e:
+            log("native dog overlay failed: %r" % (e,))
 
     def _reconcile_on_enable(self):
         c = read_clip()
@@ -753,6 +831,59 @@ class NiiPurifier:
             except Exception:
                 return True
 
+    def _permission_prompt(self):
+        try:
+            messagebox.showwarning(APP_NAME,
+                "Cmd+V 自动切换需要系统权限：\n\n"
+                "系统设置 → 隐私与安全 → 辅助功能，勾选「妮牌净化器」；\n"
+                "系统设置 → 隐私与安全 → 输入监控，也勾选它。\n"
+                "授权后退出并重新打开本 App。\n\n"
+                "也可以右键小狗 →「下一个（手动）」临时切换。")
+        except Exception as e:
+            log("permission prompt failed: %r" % (e,))
+
+    def _manual_next(self):
+        self._handle_paste()
+
+    def _point_in_widget(self, x, y):
+        try:
+            px, py = self.pos
+            return px <= x < px + WIN_W and py <= y < py + WIN_H
+        except Exception:
+            return False
+
+    def _start_mouse_listener(self):
+        try:
+            from pynput import mouse
+        except Exception as e:
+            log("pynput mouse import failed: %r" % (e,))
+            return
+
+        def on_click(x, y, button, pressed):
+            try:
+                if not pressed:
+                    return
+                now = time.monotonic()
+                if button == mouse.Button.right:
+                    if not self._point_in_widget(x, y):
+                        self._mouse_right_at = now
+                elif button == mouse.Button.left:
+                    if self._own_menu_open:
+                        self._mouse_right_at = None
+                    elif self._mouse_right_at is not None and now - self._mouse_right_at < 3.0:
+                        self._mouse_right_at = None
+                        if not self._point_in_widget(x, y):
+                            self._mouse_paste_due = now + 0.20
+            except Exception:
+                pass
+
+        try:
+            self._mouse_listener = mouse.Listener(on_click=on_click)
+            self._mouse_listener.start()
+            log("mouse listener started")
+        except Exception as e:
+            log("mouse listener failed: %r" % (e,))
+
     def _start_listener(self):
         try:
             from pynput import keyboard
@@ -766,7 +897,9 @@ class NiiPurifier:
         def is_v(k):
             try:
                 ch = getattr(k, "char", None)
-                return bool(ch) and ch.lower() == "v"
+                if ch and ch.lower() == "v":
+                    return True
+                return getattr(k, "vk", None) == 9
             except Exception:
                 return False
 
@@ -844,8 +977,14 @@ class NiiPurifier:
             if sig is not None:
                 self.paste_signal = None
                 self._handle_paste()
+            due = self._mouse_paste_due
+            if due is not None and time.monotonic() >= due:
+                self._mouse_paste_due = None
+                if self.queue.active and read_clip() == self.queue.current:
+                    self._handle_paste()
         else:
             self.paste_signal = None
+            self._mouse_paste_due = None
         delay = 80 if (self.enabled and self.queue.active) else 200
         self.root.after(delay, self._poll)
 
