@@ -1,4 +1,4 @@
-name: build-mac
+﻿name: build-mac
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +43,7 @@ jobs:
       - name: PyInstaller
         run: |
           pyinstaller --noconfirm --clean --windowed --onedir \
-            --name "妮牌净化器" \
+            --name "濡墝鍑€鍖栧櫒" \
             --icon build_icon/app.icns \
             --osx-bundle-identifier com.nii.purifier \
             --add-data "ni_assets/ni_face.png:ni_assets" \
@@ -53,10 +53,11 @@ jobs:
 
       - name: Zip app
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "dist/妮牌净化器.app" "妮牌净化器-mac-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent "dist/濡墝鍑€鍖栧櫒.app" "濡墝鍑€鍖栧櫒-mac-arm64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: nii-purifier-mac-arm64
-          path: 妮牌净化器-mac-arm64.zip
+          path: 濡墝鍑€鍖栧櫒-mac-arm64.zip
           if-no-files-found: error
+
