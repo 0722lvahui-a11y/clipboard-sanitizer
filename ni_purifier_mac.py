@@ -28,7 +28,7 @@ from tkinter import messagebox
 from PIL import Image, ImageDraw, ImageFilter, ImageColor, ImageFont, ImageTk
 
 APP_NAME = "妮牌净化器"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.1.0"
 APP_DATA = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "NiiPurifier")
 SETTINGS_PATH = os.path.join(APP_DATA, "settings.json")
 LOCK_PATH = os.path.join(APP_DATA, "instance.lock")
@@ -327,18 +327,10 @@ class NiiPurifier:
         self.root.title(APP_NAME)
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
+        # macOS 的 Tk 透明窗在部分机型不渲染内容；先用实色背景保证可见
         self.transparent = False
-        try:
-            self.root.attributes("-transparent", True)
-            self.transparent = True
-        except Exception as e:
-            log("transparent attribute failed: %r" % (e,))
-        self.bg = "systemTransparent" if self.transparent else "#FFE4EC"
-        try:
-            self.root.configure(bg=self.bg)
-        except Exception:
-            self.bg = "#FFE4EC"
-            self.root.configure(bg=self.bg)
+        self.bg = "#FFE4EC"
+        self.root.configure(bg=self.bg)
         self.root.resizable(False, False)
         self.root.report_callback_exception = self._tk_exception
 
@@ -429,10 +421,6 @@ class NiiPurifier:
             self.root.deiconify()
             self.root.lift()
             self.root.attributes("-topmost", True)
-            try:
-                self.root.attributes("-transparent", True)
-            except Exception:
-                pass
             self._refresh_button()
             log("shown from dock")
         except Exception as e:
