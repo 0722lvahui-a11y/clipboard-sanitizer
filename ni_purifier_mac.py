@@ -12,6 +12,7 @@
 
 import os
 import sys
+import platform
 import re
 import json
 import math
@@ -27,7 +28,7 @@ from tkinter import messagebox
 from PIL import Image, ImageDraw, ImageFilter, ImageColor, ImageFont, ImageTk
 
 APP_NAME = "妮牌净化器"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 APP_DATA = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "NiiPurifier")
 SETTINGS_PATH = os.path.join(APP_DATA, "settings.json")
 LOCK_PATH = os.path.join(APP_DATA, "instance.lock")
@@ -382,7 +383,7 @@ class NiiPurifier:
             self.root.after(5800, lambda: self._show_toast("Cmd+V 需辅助功能权限",
                                                            duration=6.0, kind="perm"))
         log("start version=%s arch=%s trusted=%s" %
-            (APP_VERSION, __import__("platform").machine(), self._trusted))
+            (APP_VERSION, platform.machine(), self._trusted))
 
     # ----------------------- 窗口 / Dock -----------------------
     def _set_window_icon(self):
