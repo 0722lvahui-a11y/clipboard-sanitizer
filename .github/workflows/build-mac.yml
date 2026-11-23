@@ -1,0 +1,62 @@
+name: build-mac
+
+on:
+  push:
+    branches: [mac-v2]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow pynput pyinstaller
+
+      - name: Check Tk
+        run: python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+
+      - name: Build icns
+        run: |
+          mkdir -p build_icon/AppIcon.iconset
+          SRC=ni_assets/icon_pink.png
+          sips -z 16 16 "$SRC" --out build_icon/AppIcon.iconset/icon_16x16.png >/dev/null
+          sips -z 32 32 "$SRC" --out build_icon/AppIcon.iconset/icon_16x16@2x.png >/dev/null
+          sips -z 32 32 "$SRC" --out build_icon/AppIcon.iconset/icon_32x32.png >/dev/null
+          sips -z 64 64 "$SRC" --out build_icon/AppIcon.iconset/icon_32x32@2x.png >/dev/null
+          sips -z 128 128 "$SRC" --out build_icon/AppIcon.iconset/icon_128x128.png >/dev/null
+          sips -z 256 256 "$SRC" --out build_icon/AppIcon.iconset/icon_128x128@2x.png >/dev/null
+          sips -z 256 256 "$SRC" --out build_icon/AppIcon.iconset/icon_256x256.png >/dev/null
+          sips -z 512 512 "$SRC" --out build_icon/AppIcon.iconset/icon_256x256@2x.png >/dev/null
+          sips -z 512 512 "$SRC" --out build_icon/AppIcon.iconset/icon_512x512.png >/dev/null
+          sips -z 1024 1024 "$SRC" --out build_icon/AppIcon.iconset/icon_512x512@2x.png >/dev/null
+          iconutil -c icns build_icon/AppIcon.iconset -o build_icon/app.icns
+
+      - name: PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onedir \
+            --name "妮牌净化器" \
+            --icon build_icon/app.icns \
+            --osx-bundle-identifier com.nii.purifier \
+            --add-data "ni_assets/ni_face.png:ni_assets" \
+            --add-data "ni_assets/icon_pink.png:ni_assets" \
+            --collect-submodules pynput \
+            ni_purifier_mac.py
+
+      - name: Zip app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "dist/妮牌净化器.app" "妮牌净化器-mac-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nii-purifier-mac-arm64
+          path: 妮牌净化器-mac-arm64.zip
+          if-no-files-found: error
